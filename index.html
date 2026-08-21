@@ -4,12 +4,506 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>דשבורד הוצאות משפחתי</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-PLACEHOLDER_WILL_BE_REPLACED
+:root{--bg:#f3efe6;--card:#fffcf7;--ink:#1c2428;--muted:#5c6b73;--line:#d8d2c4;--teal:#0f6e6a;--teal-soft:#d7ecea;--coral:#c45c48;--coral-soft:#f8e4df;--good:#2f7d4a;--good-soft:#e2f0e6;--warn:#8a6000;--warn-soft:#fff3cc;--shadow:0 4px 18px rgba(28,36,40,.07);--shadow-lg:0 10px 40px rgba(28,36,40,.13);--radius:16px;--radius-sm:10px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:"Rubik",system-ui,sans-serif;color:var(--ink);background:radial-gradient(1100px 480px at 100% -8%,#dceceb 0%,transparent 55%),radial-gradient(800px 380px at 0% 0%,#f6e8dc 0%,transparent 50%),var(--bg);min-height:100vh;}
+header{background:var(--teal);color:#fff;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(0,0,0,.18);}
+.header-left h1{font-size:1.15rem;font-weight:700;}
+.header-left .sub{font-size:.78rem;opacity:.72;margin-top:.1rem;}
+.month-nav{display:flex;align-items:center;gap:.4rem;}
+.month-nav button{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:8px;width:32px;height:32px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0;}
+.month-nav button:hover{background:rgba(255,255,255,.3);}
+.month-nav select{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:8px;padding:.35rem .7rem;font-family:"Rubik",sans-serif;font-size:.88rem;font-weight:500;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;max-width:160px;}
+.month-nav select option{background:#0f5e5a;color:#fff;}
+.tabs{background:var(--card);border-bottom:1px solid var(--line);display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;position:sticky;top:57px;z-index:40;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab-btn{flex-shrink:0;padding:.75rem 1.25rem;font-family:"Rubik",sans-serif;font-size:.88rem;font-weight:500;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s,border-color .15s;white-space:nowrap;}
+.tab-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
+.tab-btn:hover:not(.active){color:var(--ink);}
+.wrap{max-width:960px;margin:0 auto;padding:1.25rem 1rem 4rem;}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+section{margin-bottom:1.25rem;}
+#loading-overlay{text-align:center;padding:4rem 1rem;}
+.spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto .9rem;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#error-box{display:none;background:var(--coral-soft);border:1px solid #f5c0b0;border-radius:var(--radius-sm);padding:1rem 1.25rem;color:var(--coral);font-size:.9rem;margin-bottom:1.25rem;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.1rem 1.2rem;box-shadow:var(--shadow);}
+.card.hero{background:linear-gradient(145deg,#0f6e6a 0%,#194f5c 100%);color:#f7fffe;border:0;}
+.card-label{display:block;font-size:.74rem;font-weight:500;color:var(--muted);margin-bottom:.2rem;letter-spacing:.02em;text-transform:uppercase;}
+.card.hero .card-label{color:rgba(255,255,255,.72);}
+.card-value{font-size:clamp(1.3rem,4vw,1.75rem);font-weight:700;letter-spacing:-.02em;}
+.card.hero .card-value{color:#fff;}
+.card-note{font-size:.78rem;color:var(--muted);margin-top:.3rem;line-height:1.4;}
+.card.hero .card-note{color:rgba(255,255,255,.75);}
+.pill{display:inline-flex;align-items:center;gap:.3rem;padding:.18rem .6rem;border-radius:999px;font-size:.73rem;font-weight:600;margin-top:.45rem;}
+.pill.good{background:var(--good-soft);color:var(--good);}
+.pill.bad{background:var(--coral-soft);color:var(--coral);}
+.pill.warn{background:var(--warn-soft);color:var(--warn);}
+.pill.neutral{background:var(--teal-soft);color:var(--teal);}
+.card.hero .pill.good{background:rgba(255,255,255,.18);color:#e8fff4;}
+.card.hero .pill.bad{background:rgba(255,200,180,.25);color:#ffe8e0;}
+.grid{display:grid;gap:.85rem;}
+.grid-2{grid-template-columns:1fr 1fr;}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+@media(max-width:720px){.grid-3{grid-template-columns:1fr 1fr;}.stack-mobile{grid-template-columns:1fr !important;}}
+@media(max-width:480px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+.progress-track{background:rgba(255,255,255,.2);border-radius:999px;height:9px;overflow:hidden;margin-top:.75rem;}
+.progress-track.light{background:#ece7dc;}
+.progress-fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,#7fd4c8,rgba(255,255,255,.6));transition:width .5s ease;}
+.progress-track.light .progress-fill{background:linear-gradient(90deg,var(--teal),#49a6a1);}
+.progress-track.light .progress-fill.warn{background:linear-gradient(90deg,#d4a800,#f0c830);}
+.progress-track.light .progress-fill.over{background:linear-gradient(90deg,var(--coral),#e87060);}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;}
+.section-head h2{font-size:1rem;font-weight:700;color:var(--teal);}
+.section-head .aside{font-size:.76rem;color:var(--muted);}
+.chart-wrap{position:relative;}
+.chart-wrap.h160{height:160px;}
+.chart-wrap.h240{height:240px;}
+.chart-wrap.h280{height:280px;}
+.data-table{width:100%;border-collapse:collapse;font-size:.87rem;}
+.data-table th{text-align:right;padding:.45rem .35rem;border-bottom:2px solid var(--line);font-size:.72rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+.data-table td{padding:.5rem .35rem;border-bottom:1px solid #ede9e0;vertical-align:middle;}
+.data-table tr:last-child td{border-bottom:0;}
+.data-table tbody tr.clickable{cursor:pointer;transition:background .1s;}
+.data-table tbody tr.clickable:hover td{background:var(--teal-soft);}
+.ibar{height:5px;border-radius:999px;background:#ece7dc;overflow:hidden;margin-top:.28rem;}
+.ibar-fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--teal),#49a6a1);}
+.user-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;}
+.user-row:last-child{margin-bottom:0;}
+.user-name{font-size:.85rem;font-weight:500;min-width:55px;}
+.user-bar-wrap{flex:1;background:#ece7dc;border-radius:4px;height:7px;overflow:hidden;}
+.user-bar-fill{height:100%;border-radius:inherit;}
+.u-asaf{background:var(--teal);}
+.u-karina{background:#c45c48;}
+.user-amount{font-size:.83rem;color:var(--muted);direction:ltr;min-width:90px;text-align:left;font-weight:500;}
+.insights-card{background:linear-gradient(135deg,#fffdf8 0%,#eef6f5 100%);border:1px solid var(--line);border-radius:var(--radius);padding:1.1rem 1.2rem;box-shadow:var(--shadow);}
+.insights-card h3{font-size:.95rem;font-weight:600;color:var(--teal);margin-bottom:.5rem;}
+.insights-card ul{padding-right:1.1rem;}
+.insights-card li{font-size:.87rem;line-height:1.5;margin-bottom:.35rem;color:#1a3535;}
+.filter-row{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.85rem;align-items:center;}
+.filter-row input,.filter-row select{font-family:"Rubik",sans-serif;font-size:.85rem;padding:.45rem .75rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);outline:none;min-width:0;flex:1 1 140px;}
+.filter-row input:focus,.filter-row select:focus{border-color:var(--teal);}
+.file-drop{border:2px dashed var(--line);border-radius:var(--radius-sm);padding:2rem 1rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;display:block;}
+.file-drop:hover,.file-drop.drag{border-color:var(--teal);background:var(--teal-soft);}
+.file-drop input[type=file]{display:none;}
+.file-drop .drop-icon{font-size:2rem;margin-bottom:.4rem;}
+.file-drop .drop-hint{font-size:.83rem;color:var(--muted);}
+.file-drop .drop-name{font-size:.87rem;font-weight:500;color:var(--teal);margin-top:.3rem;display:none;}
+.user-choice{display:flex;gap:.75rem;flex-wrap:wrap;margin:.5rem 0;}
+.user-choice label{display:flex;align-items:center;gap:.4rem;font-size:.88rem;cursor:pointer;}
+.form-label{font-size:.82rem;font-weight:500;color:var(--muted);margin-bottom:.3rem;display:block;}
+.import-status{font-size:.83rem;min-height:1.1rem;margin-top:.35rem;}
+.import-status.ok{color:var(--good);}
+.import-status.err{color:var(--coral);}
+.manual-form{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;}
+@media(max-width:520px){.manual-form{grid-template-columns:1fr;}}
+.form-group{display:flex;flex-direction:column;gap:.3rem;}
+.form-group input,.form-group select{font-family:"Rubik",sans-serif;font-size:.88rem;padding:.5rem .75rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);outline:none;width:100%;}
+.form-group input:focus,.form-group select:focus{border-color:var(--teal);}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.15rem;border-radius:8px;border:none;font-family:"Rubik",sans-serif;font-size:.88rem;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.97);}
+.btn:disabled{opacity:.45;cursor:default;}
+.btn-primary{background:var(--teal);color:#fff;}
+.btn-primary:hover:not(:disabled){opacity:.88;}
+.btn-secondary{background:var(--line);color:var(--ink);}
+.btn-secondary:hover:not(:disabled){opacity:.8;}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(28,36,40,.48);z-index:200;align-items:center;justify-content:center;padding:1rem;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--card);border-radius:var(--radius);padding:1.5rem 1.4rem;max-width:520px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:var(--shadow-lg);position:relative;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;}
+.modal-header h3{font-size:1.05rem;font-weight:700;color:var(--teal);}
+.modal-close{background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:.1rem .3rem;}
+.modal-close:hover{color:var(--ink);}
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--muted);}
+.empty .eicon{font-size:2.2rem;margin-bottom:.5rem;}
+.empty p{font-size:.88rem;}
+.ltr,.num{direction:ltr;display:inline-block;unicode-bidi:plaintext;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;}
+.mt05{margin-top:.5rem;}
+.mt1{margin-top:1rem;}
+.text-muted{color:var(--muted);font-size:.8rem;}
+.text-good{color:var(--good);}
+.text-bad{color:var(--coral);}
+.fw6{font-weight:600;}
 </style>
 </head>
-<body>PLACEHOLDER</body>
+<body>
+<header>
+  <div class="header-left">
+    <h1>דשבורד הוצאות</h1>
+    <div class="sub" id="hdr-sub">טוען...</div>
+  </div>
+  <div class="month-nav">
+    <button id="btn-prev" title="חודש קודם">&#8250;</button>
+    <select id="month-sel"></select>
+    <button id="btn-next" title="חודש הבא">&#8249;</button>
+  </div>
+</header>
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="summary" role="tab">סיכום</button>
+  <button class="tab-btn" data-tab="categories" role="tab">קטגוריות</button>
+  <button class="tab-btn" data-tab="trends" role="tab">מגמות</button>
+  <button class="tab-btn" data-tab="transactions" role="tab">עסקאות</button>
+  <button class="tab-btn" data-tab="import" role="tab">ייבוא</button>
+</nav>
+<div class="wrap">
+  <div id="error-box" role="alert"></div>
+  <div class="tab-panel active" id="tab-summary">
+    <div id="loading-overlay"><div class="spinner"></div><div style="font-size:.9rem;color:var(--muted)">טוען נתונים...</div></div>
+    <div id="summary-content" style="display:none">
+      <section>
+        <div class="section-head"><h2 id="cashflow-title">תזרים</h2><span class="aside">יעדים מול ביצוע</span></div>
+        <div class="grid grid-3 stack-mobile">
+          <div class="card hero">
+            <span class="card-label">הוצאות</span>
+            <div class="card-value"><span class="num" id="c-total">--</span></div>
+            <div class="pill" id="c-pill-exp">טוען...</div>
+            <div class="progress-track" style="margin-top:.75rem"><div class="progress-fill" id="c-bar-exp" style="width:0%"></div></div>
+          </div>
+          <div class="card">
+            <span class="card-label">מספר תנועות</span>
+            <div class="card-value" id="c-count">--</div>
+            <div class="card-note mt05" id="c-avg-note"></div>
+            <div class="pill neutral mt05" id="c-compare-pill" style="display:none"></div>
+          </div>
+          <div class="card">
+            <span class="card-label">נותר לתקציב</span>
+            <div class="card-value" id="c-remaining">--</div>
+            <div class="progress-track light mt05"><div class="progress-fill" id="c-bar-remain" style="width:0%"></div></div>
+            <div class="card-note mt05" id="c-target-note"></div>
+          </div>
+        </div>
+      </section>
+      <section>
+        <div class="section-head"><h2>פיצול לפי אדם</h2></div>
+        <div class="grid grid-2 stack-mobile">
+          <div class="card"><div id="users-bars"></div></div>
+          <div class="card"><div class="chart-wrap h160"><canvas id="chart-user-pie"></canvas></div></div>
+        </div>
+      </section>
+      <section id="insights-section" style="display:none">
+        <div class="section-head"><h2>תובנות</h2></div>
+        <div class="insights-card"><h3 id="insights-title"></h3><ul id="insights-list"></ul></div>
+      </section>
+      <section>
+        <div class="section-head"><h2>ניצול תקציב</h2></div>
+        <div class="card">
+          <div class="flex-between" style="margin-bottom:.6rem">
+            <span style="font-size:.88rem;font-weight:500">הוצאות מול יעד חודשי</span>
+            <span class="text-muted" id="budget-pct-label">--</span>
+          </div>
+          <div class="progress-track light"><div class="progress-fill" id="budget-bar-big" style="width:0%"></div></div>
+          <div class="flex-between mt05">
+            <span class="text-muted" style="font-size:.8rem">הוצא: <strong class="num" id="budget-spent-lbl">--</strong></span>
+            <span class="text-muted" style="font-size:.8rem">יעד: <strong class="num" id="budget-target-lbl">--</strong></span>
+          </div>
+        </div>
+      </section>
+      <section>
+        <div class="section-head">
+          <h2>קטגוריות מובילות</h2>
+          <button class="btn btn-secondary" style="font-size:.77rem;padding:.3rem .7rem" onclick="switchTab('categories')">כל הקטגוריות</button>
+        </div>
+        <div class="card">
+          <div class="empty" id="top-cats-empty" style="display:none"><div class="eicon">📊</div><p>אין נתונים לחודש זה</p></div>
+          <table class="data-table" id="top-cats-table" style="display:none">
+            <thead><tr><th>קטגוריה</th><th style="text-align:left;direction:ltr">סכום</th><th style="text-align:left;direction:ltr">%</th></tr></thead>
+            <tbody id="top-cats-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div class="tab-panel" id="tab-categories">
+    <section>
+      <div class="section-head"><h2>הוצאות לפי קטגוריה</h2><span class="aside" id="cat-total-aside">--</span></div>
+      <div class="grid grid-2 stack-mobile">
+        <div class="card"><div class="chart-wrap h280"><canvas id="chart-cat-pie"></canvas></div></div>
+        <div class="card"><div class="chart-wrap h280"><canvas id="chart-cat-bars"></canvas></div></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>טבלת קטגוריות</h2><span class="aside text-muted" style="font-size:.78rem">לחץ לפרטים</span></div>
+      <div class="card">
+        <div class="empty" id="cat-empty" style="display:none"><div class="eicon">📊</div><p>אין נתונים</p></div>
+        <table class="data-table" id="cat-full-table" style="display:none">
+          <thead><tr><th>קטגוריה</th><th style="text-align:left;direction:ltr">סכום</th><th style="text-align:left;direction:ltr">%</th><th></th></tr></thead>
+          <tbody id="cat-full-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div class="tab-panel" id="tab-trends">
+    <section><div class="section-head"><h2>מגמת הוצאות — 6 חודשים</h2></div><div class="card"><div class="chart-wrap h240"><canvas id="chart-trend"></canvas></div></div></section>
+    <section><div class="section-head"><h2>פיצול קטגוריות לאורך זמן</h2></div><div class="card"><div class="chart-wrap h240"><canvas id="chart-cat-trend"></canvas></div></div></section>
+    <section>
+      <div class="section-head"><h2>נתונים מצטברים</h2></div>
+      <div class="grid grid-3 stack-mobile">
+        <div class="card"><span class="card-label">סה"כ (6 חודשים)</span><div class="card-value" id="cum-total">--</div></div>
+        <div class="card"><span class="card-label">ממוצע חודשי</span><div class="card-value" id="cum-avg">--</div></div>
+        <div class="card"><span class="card-label">חודשים במעקב</span><div class="card-value" id="cum-months">--</div></div>
+      </div>
+    </section>
+  </div>
+  <div class="tab-panel" id="tab-transactions">
+    <section>
+      <div class="section-head"><h2>עסקאות</h2><span class="aside text-muted" style="font-size:.75rem">* API מחזיר סיכומי קטגוריה — עסקאות בודדות בקרוב</span></div>
+      <div class="filter-row">
+        <input type="search" id="txn-search" placeholder="חיפוש קטגוריה...">
+        <select id="txn-user-filter"><option value="">כל המשתמשים</option><option value="asaf">אסף</option><option value="karina">קרינה</option></select>
+      </div>
+      <div class="card">
+        <div class="empty" id="txn-empty" style="display:none"><div class="eicon">🔍</div><p>אין תוצאות</p></div>
+        <table class="data-table" id="txn-table" style="display:none">
+          <thead><tr><th>קטגוריה</th><th style="text-align:left;direction:ltr">סכום</th><th style="text-align:left;direction:ltr">%</th></tr></thead>
+          <tbody id="txn-body"></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>הוספת עסקה ידנית</h2></div>
+      <div class="card">
+        <form id="manual-form" onsubmit="submitManual(event)">
+          <div class="manual-form">
+            <div class="form-group"><label class="form-label">תאריך</label><input type="date" id="m-date" required></div>
+            <div class="form-group"><label class="form-label">סכום (&#8362;)</label><input type="number" id="m-amount" min="0" step="0.01" placeholder="0.00" required></div>
+            <div class="form-group"><label class="form-label">מוכר / תיאור</label><input type="text" id="m-merchant" placeholder="שם המוכר" required></div>
+            <div class="form-group"><label class="form-label">קטגוריה</label>
+              <select id="m-category">
+                <option>מזון וצריכה</option><option>מסעדות, קפה וברים</option><option>תחבורה ורכבים</option>
+                <option>חשבונות</option><option>פנאי</option><option>אופנה</option><option>בריאות</option>
+                <option>חינוך</option><option>ריהוט ובית</option><option>טיסות ותיירות</option>
+                <option>העברת כספים</option><option>משיכת מזומן</option><option>אחר</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">משתמש</label><select id="m-user"><option value="asaf">אסף</option><option value="karina">קרינה</option></select></div>
+            <div class="form-group" style="display:flex;align-items:flex-end"><button type="submit" class="btn btn-primary" id="manual-submit-btn" style="width:100%">הוסף עסקה</button></div>
+          </div>
+          <div class="import-status" id="manual-status"></div>
+        </form>
+      </div>
+    </section>
+  </div>
+  <div class="tab-panel" id="tab-import">
+    <section>
+      <div class="section-head"><h2>ייבוא קובץ בנק</h2></div>
+      <div class="card">
+        <label class="file-drop" id="file-drop-zone">
+          <input type="file" id="csv-file-input" accept=".csv,.txt,.xlsx,.xls">
+          <div class="drop-icon">📂</div>
+          <div class="drop-hint">לחצו לבחירת קובץ CSV מהבנק, או גררו לכאן</div>
+          <div class="drop-name" id="drop-filename"></div>
+        </label>
+        <div class="mt05">
+          <span class="form-label">ייבוא עבור:</span>
+          <div class="user-choice">
+            <label><input type="radio" name="import-user" value="asaf" checked> אסף (כרטיס 3936)</label>
+            <label><input type="radio" name="import-user" value="karina"> קרינה (כרטיס 2126)</label>
+          </div>
+        </div>
+        <div class="flex-between" style="margin-top:.75rem">
+          <div class="import-status" id="import-status"></div>
+          <button class="btn btn-primary" id="import-btn" disabled onclick="doImport()">ייבוא</button>
+        </div>
+        <div id="import-result" style="display:none;margin-top:1rem">
+          <div class="card" style="background:var(--good-soft);border-color:#b5dcc5">
+            <div class="fw6 text-good" id="import-result-title"></div>
+            <div class="text-muted mt05" id="import-result-detail"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>מידע</h2></div>
+      <div class="card">
+        <ul style="padding-right:1.1rem;font-size:.87rem;color:var(--muted);line-height:1.8">
+          <li>קבצי CSV שיוצאו מבנק לאומי, בנק הפועלים, מקס, ישראכרט</li>
+          <li>כרטיס 3936 = אסף | כרטיס 2126 = קרינה</li>
+          <li>הקובץ מקודד Base64 ונשלח ל-API; כפילויות מסוננות אוטומטית</li>
+        </ul>
+        <button class="btn btn-secondary mt1" onclick="cachedData={}; loadData(currentMonth)">🔄 רענן נתונים</button>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="modal-overlay" id="drill-modal" onclick="closeDrillModal(event)">
+  <div class="modal">
+    <div class="modal-header"><h3 id="drill-title">פירוט קטגוריה</h3><button class="modal-close" onclick="closeDrillModal()">&times;</button></div>
+    <div id="drill-body"></div>
+  </div>
+</div>
+<script>
+const SUMMARY_API='https://asafshe.wixsite.com/expenses-bot/_functions/getSummary';
+const IMPORT_API='https://asafshe.wixsite.com/expenses-bot/_functions/importExpenses';
+let currentMonth=todayMonth(),cachedData={},trendData=null,activeTab='summary';
+let chartUserPie=null,chartCatPie=null,chartCatBars=null,chartTrend=null,chartCatTrend=null;
+function todayMonth(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function addMonths(ym,delta){const[y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function monthLabel(ym){const[y,m]=ym.split('-').map(Number);const n=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];return `${n[m-1]} ${y}`;}
+function fmt(n){if(n==null||n==='')return '--';return '&#8362;'+Math.round(Number(n)).toLocaleString('he-IL');}
+function fmtP(n){if(n==null)return '--';return '\u20aa'+Math.round(Number(n)).toLocaleString('he-IL');}
+function pct(a,b){return b?Math.round((a/b)*100):0;}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function buildMonthSelector(){const sel=document.getElementById('month-sel');const now=todayMonth();sel.innerHTML='';for(let i=23;i>=0;i--){const ym=addMonths(now,-i);const opt=document.createElement('option');opt.value=ym;opt.textContent=monthLabel(ym);if(ym===currentMonth)opt.selected=true;sel.appendChild(opt);}}
+document.getElementById('month-sel').addEventListener('change',function(){currentMonth=this.value;trendData=null;loadData(currentMonth);});
+document.getElementById('btn-prev').addEventListener('click',()=>{currentMonth=addMonths(currentMonth,1);buildMonthSelector();trendData=null;loadData(currentMonth);});
+document.getElementById('btn-next').addEventListener('click',()=>{currentMonth=addMonths(currentMonth,-1);buildMonthSelector();trendData=null;loadData(currentMonth);});
+function switchTab(tab){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+tab));activeTab=tab;if(tab==='trends'&&!trendData)loadTrendData();}
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+async function loadData(month){showLoading();hideError();try{if(!cachedData[month]){const r=await fetch(`${SUMMARY_API}?month=${month}`);if(!r.ok)throw new Error(`שגיאה ${r.status}`);const d=await r.json();if(d.totalAmount!==undefined&&d.total===undefined)d.total=d.totalAmount;if(d.transactionCount!==undefined&&d.count===undefined)d.count=d.transactionCount;cachedData[month]=d;}renderAll(cachedData[month],month);}catch(e){showError('לא ניתן לטעון נתונים: '+e.message);hideLoading();}}
+function showLoading(){document.getElementById('loading-overlay').style.display='';document.getElementById('summary-content').style.display='none';}
+function hideLoading(){document.getElementById('loading-overlay').style.display='none';document.getElementById('summary-content').style.display='';}
+function showError(msg){const b=document.getElementById('error-box');b.textContent=msg;b.style.display='';}
+function hideError(){document.getElementById('error-box').style.display='none';}
+function renderAll(data,month){renderSummary(data,month);renderCategories(data);renderTransactions(data);hideLoading();document.getElementById('hdr-sub').textContent=monthLabel(month);}
+function renderSummary(data,month){
+  const total=Number(data.total||0),count=Number(data.count||0),goals=data.goals||{},target=Number(goals.expenseTarget||data.monthlyGoal||17000);
+  const prevD=data.prevMonth||{},prevTot=Number(prevD.total||0),byUser=data.byUser||{},insights=data.insights||null;
+  document.getElementById('c-total').innerHTML=fmt(total);
+  document.getElementById('c-count').textContent=count;
+  if(count)document.getElementById('c-avg-note').textContent='ממוצע לתנועה: '+fmtP(Math.round(total/count));
+  const barPct=Math.min(pct(total,target),100);
+  document.getElementById('c-bar-exp').style.width=barPct+'%';
+  const pe=document.getElementById('c-pill-exp');
+  if(total>target){pe.className='pill bad';pe.innerHTML=`יעד ${fmt(target)} · חריגה ${fmt(total-target)}`;}
+  else{pe.className='pill good';pe.innerHTML=`יעד ${fmt(target)} · נותר ${fmt(target-total)}`;}
+  const rem=target-total;
+  document.getElementById('c-remaining').innerHTML=rem>=0?fmt(rem):'-'+fmt(Math.abs(rem));
+  const rb=document.getElementById('c-bar-remain');
+  rb.style.width=Math.min(pct(rem>=0?rem:0,target),100)+'%';
+  rb.className='progress-fill'+(rem<0?' over':pct(total,target)>80?' warn':'');
+  document.getElementById('c-target-note').textContent='יעד חודשי: '+fmtP(target);
+  document.getElementById('cashflow-title').textContent='תזרים · '+monthLabel(month);
+  const cp=document.getElementById('c-compare-pill');
+  if(prevTot>0&&total>0){const diff=total-prevTot,dp=Math.round((diff/prevTot)*100);cp.className='pill '+(diff>0?'bad':'good')+' mt05';cp.innerHTML=(diff>0?'+':'')+dp+'% לעומת '+monthLabel(prevD.month||addMonths(month,-1))+' ('+fmtP(prevTot)+')';cp.style.display='';}
+  else cp.style.display='none';
+  document.getElementById('budget-pct-label').textContent=barPct+'%';
+  const bb=document.getElementById('budget-bar-big');bb.style.width=barPct+'%';bb.className='progress-fill'+(total>target?' over':pct(total,target)>80?' warn':'');
+  document.getElementById('budget-spent-lbl').innerHTML=fmt(total);
+  document.getElementById('budget-target-lbl').innerHTML=fmt(target);
+  const byArr=typeof byUser==='object'&&!Array.isArray(byUser)?Object.entries(byUser).map(([u,a])=>({user:u,amount:Number(a)})):(byUser||[]).map(u=>({user:u.user,amount:Number(u.amount)}));
+  const userTot=byArr.reduce((s,u)=>s+u.amount,0)||total;
+  const ubDiv=document.getElementById('users-bars');ubDiv.innerHTML='';
+  byArr.sort((a,b)=>b.amount-a.amount).forEach(u=>{const p2=pct(u.amount,userTot);const cls=u.user==='asaf'?'u-asaf':'u-karina';const lbl=u.user==='asaf'?'אסף':u.user==='karina'?'קרינה':u.user;ubDiv.innerHTML+=`<div class="user-row"><span class="user-name">${esc(lbl)}</span><div class="user-bar-wrap"><div class="user-bar-fill ${cls}" style="width:${p2}%"></div></div><span class="user-amount">${fmtP(u.amount)} (${p2}%)</span></div>`;});
+  if(chartUserPie)chartUserPie.destroy();
+  if(byArr.length){chartUserPie=new Chart(document.getElementById('chart-user-pie'),{type:'doughnut',data:{labels:byArr.map(u=>u.user==='asaf'?'אסף':u.user==='karina'?'קרינה':u.user),datasets:[{data:byArr.map(u=>u.amount),backgroundColor:byArr.map(u=>u.user==='asaf'?'#0f6e6a':'#c45c48'),borderWidth:2,borderColor:'#fffcf7'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Rubik',size:12},padding:12}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${fmtP(ctx.parsed)}`}}}}});}
+  const ins=document.getElementById('insights-section');
+  if(insights&&(insights.title||(insights.bullets&&insights.bullets.length))){ins.style.display='';document.getElementById('insights-title').textContent=insights.title||'';const ul=document.getElementById('insights-list');ul.innerHTML='';(insights.bullets||[]).forEach(b=>{ul.innerHTML+=`<li>${esc(b)}</li>`;});}
+  else ins.style.display='none';
+  const cats=data.byCategory||[],te=document.getElementById('top-cats-empty'),tt=document.getElementById('top-cats-table'),tb=document.getElementById('top-cats-body');
+  tb.innerHTML='';
+  if(!cats.length){te.style.display='';tt.style.display='none';}
+  else{te.style.display='none';tt.style.display='';cats.slice(0,5).forEach(c=>{const am=Number(c.amount||c.total||0),p2=pct(am,total);tb.innerHTML+=`<tr><td>${esc(c.category)}<div class="ibar"><div class="ibar-fill" style="width:${p2}%"></div></div></td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted)">${p2}%</td></tr>`;});}
+}
+function renderCategories(data){
+  const cats=data.byCategory||[],total=Number(data.total||0);
+  document.getElementById('cat-total-aside').innerHTML=fmt(total);
+  const ce=document.getElementById('cat-empty'),ct=document.getElementById('cat-full-table'),cb=document.getElementById('cat-full-body');cb.innerHTML='';
+  if(!cats.length){ce.style.display='';ct.style.display='none';}
+  else{ce.style.display='none';ct.style.display='';cats.forEach(c=>{const am=Number(c.amount||c.total||0),p2=pct(am,total);cb.innerHTML+=`<tr class="clickable" onclick="openDrill('${esc(c.category)}',${am},${p2})"><td>${esc(c.category)}<div class="ibar"><div class="ibar-fill" style="width:${p2}%"></div></div></td><td class="num fw6" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted)">${p2}%</td><td style="text-align:left"><span style="font-size:.75rem;color:var(--teal)">פרטים ›</span></td></tr>`;});}
+  const COLS=['#0f6e6a','#c45c48','#49a6a1','#e8a87c','#7EB5A6','#d4956a','#5b8fa8','#b8860b'];
+  const top8=cats.slice(0,8),lbls=top8.map(c=>c.category),amts=top8.map(c=>Number(c.amount||c.total||0));
+  if(chartCatPie)chartCatPie.destroy();
+  if(lbls.length){chartCatPie=new Chart(document.getElementById('chart-cat-pie'),{type:'doughnut',data:{labels:lbls,datasets:[{data:amts,backgroundColor:COLS.slice(0,lbls.length),borderWidth:2,borderColor:'#fffcf7'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{family:'Rubik',size:11},padding:8,boxWidth:12}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${fmtP(ctx.parsed)}`}}}}});}
+  if(chartCatBars)chartCatBars.destroy();
+  if(lbls.length){chartCatBars=new Chart(document.getElementById('chart-cat-bars'),{type:'bar',data:{labels:lbls,datasets:[{data:amts,backgroundColor:'#0f6e6a',borderRadius:6,borderSkipped:false}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${fmtP(ctx.parsed.x)}`}}},scales:{x:{ticks:{callback:v=>'\u20aa'+(v/1000).toFixed(0)+'k',font:{family:'Rubik'}},grid:{display:false}},y:{ticks:{font:{family:'Rubik',size:11}}}}}});}
+}
+function renderTransactions(data){const cats=data.byCategory||[],total=Number(data.total||0);updateTxnTable(cats,total,'','');}
+function updateTxnTable(cats,total,search,userFilter){
+  const te=document.getElementById('txn-empty'),tt=document.getElementById('txn-table'),tb=document.getElementById('txn-body');tb.innerHTML='';
+  const filtered=search?cats.filter(c=>c.category.includes(search)):cats;
+  if(!filtered.length){te.style.display='';tt.style.display='none';return;}
+  te.style.display='none';tt.style.display='';
+  filtered.forEach(c=>{const am=Number(c.amount||c.total||0),p2=pct(am,total);tb.innerHTML+=`<tr><td>${esc(c.category)}<div class="ibar"><div class="ibar-fill" style="width:${p2}%"></div></div></td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted)">${p2}%</td></tr>`;});
+}
+document.getElementById('txn-search').addEventListener('input',function(){const d=cachedData[currentMonth];if(!d)return;updateTxnTable(d.byCategory||[],Number(d.total||0),this.value.trim(),'');});
+document.getElementById('txn-user-filter').addEventListener('change',function(){const d=cachedData[currentMonth];if(!d)return;updateTxnTable(d.byCategory||[],Number(d.total||0),document.getElementById('txn-search').value.trim(),this.value);});
+async function loadTrendData(){
+  const months=[];for(let i=5;i>=0;i--)months.push(addMonths(currentMonth,-i));
+  const results=await Promise.all(months.map(async m=>{if(cachedData[m])return{month:m,data:cachedData[m]};try{const r=await fetch(`${SUMMARY_API}?month=${m}`);if(!r.ok)return{month:m,data:null};const d=await r.json();if(d.totalAmount!==undefined&&d.total===undefined)d.total=d.totalAmount;cachedData[m]=d;return{month:m,data:d};}catch{return{month:m,data:null};}}));
+  trendData=results;renderTrend(results);
+}
+function renderTrend(results){
+  const labels=results.map(r=>monthLabel(r.month).split(' ')[0]);
+  const totals=results.map(r=>r.data?Number(r.data.total||0):0);
+  const targets=results.map(r=>r.data?Number((r.data.goals||{}).expenseTarget||(r.data.monthlyGoal||17000)):17000);
+  if(chartTrend)chartTrend.destroy();
+  chartTrend=new Chart(document.getElementById('chart-trend'),{type:'bar',data:{labels,datasets:[{label:'הוצאות',data:totals,backgroundColor:totals.map((v,i)=>v>targets[i]?'rgba(196,92,72,.75)':'rgba(15,110,106,.75)'),borderRadius:7,borderSkipped:false,order:1},{label:'יעד',data:targets,type:'line',borderColor:'#d4a800',borderWidth:2,borderDash:[5,4],pointRadius:0,fill:false,order:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Rubik',size:12}}},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtP(ctx.parsed.y)}`}}},scales:{x:{ticks:{font:{family:'Rubik',size:11}}},y:{ticks:{callback:v=>'\u20aa'+(v/1000).toFixed(0)+'k',font:{family:'Rubik'}},grid:{color:'#ece7dc'}}}}});
+  const allCats=[...new Set(results.flatMap(r=>(r.data?.byCategory||[]).map(c=>c.category)))].slice(0,6);
+  const COLS=['#0f6e6a','#c45c48','#49a6a1','#e8a87c','#7EB5A6','#d4956a'];
+  const catDS=allCats.map((cat,i)=>({label:cat,data:results.map(r=>{const c=(r.data?.byCategory||[]).find(x=>x.category===cat);return c?Number(c.amount||c.total||0):0;}),backgroundColor:COLS[i%COLS.length],borderRadius:4,stack:'cats'}));
+  if(chartCatTrend)chartCatTrend.destroy();
+  chartCatTrend=new Chart(document.getElementById('chart-cat-trend'),{type:'bar',data:{labels,datasets:catDS},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Rubik',size:11},padding:10,boxWidth:12}},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtP(ctx.parsed.y)}`}}},scales:{x:{stacked:true,ticks:{font:{family:'Rubik',size:11}}},y:{stacked:true,ticks:{callback:v=>'\u20aa'+(v/1000).toFixed(0)+'k',font:{family:'Rubik'}},grid:{color:'#ece7dc'}}}}});
+  const nz=results.filter(r=>r.data&&Number(r.data.total||0)>0),cumTot=nz.reduce((s,r)=>s+Number(r.data.total||0),0);
+  document.getElementById('cum-total').innerHTML=fmt(cumTot);
+  document.getElementById('cum-avg').innerHTML=nz.length?fmt(Math.round(cumTot/nz.length)):'--';
+  document.getElementById('cum-months').textContent=nz.length;
+}
+function openDrill(category,amount,percentage){
+  const data=cachedData[currentMonth]||{};
+  document.getElementById('drill-title').textContent=category;
+  const prev=(data.prevMonth?.byCategory||[]).find(c=>c.category===category);
+  const prevAm=prev?Number(prev.amount||prev.total||0):0;
+  let cmpHtml=prevAm>0?(()=>{const diff=amount-prevAm,dp=Math.round((diff/prevAm)*100),sign=diff>0?'+':'';return `<span class="${diff>0?'text-bad':'text-good'}" style="font-size:.9rem;font-weight:600">${sign}${dp}%</span> <span style="font-size:.83rem;color:var(--muted)">(${fmtP(prevAm)} החודש הקודם)</span>`;})():'<span style="font-size:.85rem;color:var(--muted)">אין נתון לחודש קודם</span>';
+  document.getElementById('drill-body').innerHTML=`<div class="grid grid-2" style="margin-bottom:1rem;gap:.75rem"><div class="card" style="box-shadow:none;background:var(--teal-soft);border-color:#b8d8d6"><span class="card-label">סכום</span><div style="font-size:1.4rem;font-weight:700;color:var(--teal)">${fmt(amount)}</div></div><div class="card" style="box-shadow:none"><span class="card-label">מסך ההוצאות</span><div style="font-size:1.4rem;font-weight:700">${percentage}%</div></div></div><div style="margin-bottom:.75rem"><div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem">חלק מהתקציב החודשי</div><div class="progress-track light"><div class="progress-fill" style="width:${Math.min(percentage*2,100)}%"></div></div></div><div class="mt05"><span style="font-size:.8rem;font-weight:500;color:var(--muted)">השוואה לחודש קודם:</span><div style="margin-top:.35rem">${cmpHtml}</div></div><p style="font-size:.82rem;color:var(--muted);margin-top:.75rem;line-height:1.5">פירוט עסקאות בודדות יהיה זמין עם שדרוג ה-API.</p>`;
+  document.getElementById('drill-modal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeDrillModal(e){if(e&&e.target!==document.getElementById('drill-modal'))return;document.getElementById('drill-modal').classList.remove('open');document.body.style.overflow='';}
+let importFileData=null;
+const dropZone=document.getElementById('file-drop-zone'),fileInput=document.getElementById('csv-file-input');
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change',function(){if(this.files[0])processFile(this.files[0]);});
+function processFile(file){
+  const fn=document.getElementById('drop-filename');fn.textContent=file.name;fn.style.display='';
+  document.querySelector('.drop-hint').style.display='none';
+  const reader=new FileReader();
+  reader.onload=e=>{importFileData={fileName:file.name,content:btoa(unescape(encodeURIComponent(e.target.result)))};document.getElementById('import-btn').disabled=false;document.getElementById('import-result').style.display='none';document.getElementById('import-status').textContent='';};
+  reader.readAsText(file,'UTF-8');
+}
+async function doImport(){
+  if(!importFileData)return;
+  const user=document.querySelector('input[name="import-user"]:checked').value;
+  const st=document.getElementById('import-status'),btn=document.getElementById('import-btn');
+  btn.disabled=true;st.className='import-status';st.textContent='שולח...';
+  try{
+    const r=await fetch(IMPORT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileContent:importFileData.content,fileName:importFileData.fileName,user})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||`שגיאה ${r.status}`);
+    st.className='import-status ok';st.textContent='הייבוא הושלם בהצלחה';
+    const rb=document.getElementById('import-result');rb.style.display='';
+    document.getElementById('import-result-title').textContent=`יובאו ${d.newCount||d.count||0} עסקאות חדשות`;
+    document.getElementById('import-result-detail').textContent=`סה"כ ${d.count||0} עסקאות · סכום: ${fmtP(d.total||0)}`;
+    delete cachedData[currentMonth];
+  }catch(e){st.className='import-status err';st.textContent='שגיאה: '+e.message;}
+  btn.disabled=false;
+}
+async function submitManual(e){
+  e.preventDefault();
+  const st=document.getElementById('manual-status'),btn=document.getElementById('manual-submit-btn');
+  const date=document.getElementById('m-date').value,amount=parseFloat(document.getElementById('m-amount').value);
+  const merchant=document.getElementById('m-merchant').value.trim(),category=document.getElementById('m-category').value;
+  const user=document.getElementById('m-user').value;
+  btn.disabled=true;st.className='import-status';st.textContent='שולח...';
+  try{
+    const csv=`\u05ea\u05d0\u05e8\u05d9\u05da,\u05de\u05d5\u05db\u05e8,\u05e1\u05db\u05d5\u05dd,\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d4\n${date},${merchant},${amount},${category}`;
+    const r=await fetch(IMPORT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileContent:btoa(unescape(encodeURIComponent(csv))),fileName:`manual-${date}.csv`,user,manual:true,transaction:{txnDate:date,merchant,amount,category,user}})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||`שגיאה ${r.status}`);}
+    st.className='import-status ok';st.textContent=`\u05e2\u05e1\u05e7\u05d4 "${merchant}" \u05e0\u05d5\u05e1\u05e4\u05d4`;
+    document.getElementById('manual-form').reset();
+    document.getElementById('m-date').value=new Date().toISOString().split('T')[0];
+    delete cachedData[currentMonth];
+  }catch(e){st.className='import-status err';st.textContent='שגיאה: '+e.message;}
+  btn.disabled=false;
+}
+document.getElementById('m-date').value=new Date().toISOString().split('T')[0];
+buildMonthSelector();
+loadData(currentMonth);
+</script>
+</body>
 </html>
