@@ -626,39 +626,9 @@ const IMPORT_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/im
 const TRANSACTIONS_API = 'https://asafshe.wixsite.com/expenses-bot/_functions/getTransactions';
 const UPDATE_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/updateTransaction';
 
-// ─── Category normalization — single source of truth ─────────────────────────
-const CATEGORY_MAP = {
-  'מסעדות קפה וברים':   'מסעדות, קפה וברים',
-  'פנאי, בידור וספורט': 'פנאי',
-  'פנאי בידור וספורט':  'פנאי',
-  'חשמל ומחשבים':       'ציוד, תקשורת ומחשבים',
-};
-function normalizeCategory(cat) {
-  if (!cat) return 'ללא קטגוריה';
-  const t = cat.trim();
-  return CATEGORY_MAP[t] || t;
-}
-
-// ─── Aggregate raw items into summary shape ───────────────────────────────────
-function aggregateItems(items) {
-  let total = 0;
-  const catMap = {}, userMap = {};
-  for (const t of items) {
-    const amt = Number(t.amount || 0);
-    const cat = normalizeCategory(t.category);
-    const usr = t.user || 'unknown';
-    total += amt;
-    catMap[cat] = (catMap[cat] || 0) + amt;
-    userMap[usr] = (userMap[usr] || 0) + amt;
-  }
-  total = Math.round(total * 100) / 100;
-  const byCategory = Object.entries(catMap)
-    .sort((a, b) => b[1] - a[1])
-    .map(([category, amount]) => ({ category, amount: Math.round(amount * 100) / 100 }));
-  const byUser = {};
-  for (const [u, a] of Object.entries(userMap)) byUser[u] = Math.round(a * 100) / 100;
-  return { total, count: items.length, byCategory, byUser };
-}
+// ─── All normalization & aggregation live in the backend (getSummary) ───────────
+// The dashboard is display-only: it consumes data.total, data.byUser,
+// data.byCategory directly from the API response — no logic here.
 
 const KNOWN_CATEGORIES = ['מזון','מסעדות','תחבורה','קניות','בריאות','בידור','חשבונות','ביגוד','טיפוח','חינוך','נסיעות','אחר','ללא קטגוריה'];
 const KNOWN_USERS  = ['asaf', 'karina', 'joint'];
@@ -729,27 +699,19 @@ async function loadData(month) {
     const raw=await r.json();
     if(raw.error) throw new Error(raw.error);
 
-    // Aggregate raw items in the frontend — normalization happens here
-    const items = raw.items || [];
-    const agg = aggregateItems(items);
-
-    const prevItems = raw.prevMonth?.items || [];
-    const prevAgg = aggregateItems(prevItems);
-
+    // Backend already aggregated everything — just use the fields directly.
     const d = {
       month,
-      goals: raw.goals || { expenseTarget: 17000, savingsTarget: 14325 },
-      total: agg.total,
-      count: agg.count,
-      byCategory: agg.byCategory,
-      byUser: agg.byUser,
-      // raw items kept for drill-down filtering
-      _items: items,
+      goals:      raw.goals || { expenseTarget: 17000, savingsTarget: 14325 },
+      total:      Number(raw.total      || 0),
+      count:      Number(raw.count      || 0),
+      byCategory: raw.byCategory        || [],
+      byUser:     raw.byUser            || {},
       prevMonth: {
-        month: raw.prevMonth?.month,
-        total: prevAgg.total,
-        byCategory: prevAgg.byCategory,
-        _items: prevItems,
+        month:      raw.prevMonth?.month,
+        total:      Number(raw.prevMonth?.total      || 0),
+        byCategory: raw.prevMonth?.byCategory        || [],
+        byUser:     raw.prevMonth?.byUser            || {},
       },
     };
     cachedData[month]=d; renderAll(d,month);
@@ -879,11 +841,7 @@ async function loadTrendData(){
       if(!r.ok) return{month:m,data:null};
       const raw=await r.json();
       if(raw.error) return{month:m,data:null};
-      const items=raw.items||[];
-      const agg=aggregateItems(items);
-      const prevItems=raw.prevMonth?.items||[];
-      const prevAgg=aggregateItems(prevItems);
-      const d={month:m,goals:raw.goals||{expenseTarget:17000},total:agg.total,count:agg.count,byCategory:agg.byCategory,byUser:agg.byUser,_items:items,prevMonth:{month:raw.prevMonth?.month,total:prevAgg.total,byCategory:prevAgg.byCategory,_items:prevItems}};
+      const d={month:m,goals:raw.goals||{expenseTarget:17000},total:Number(raw.total||0),count:Number(raw.count||0),byCategory:raw.byCategory||[],byUser:raw.byUser||{},prevMonth:{month:raw.prevMonth?.month,total:Number(raw.prevMonth?.total||0),byCategory:raw.prevMonth?.byCategory||[],byUser:raw.prevMonth?.byUser||{}}};
       cachedData[m]=d;return{month:m,data:d};
     }catch(e){return{month:m,data:null};}
   }));
@@ -944,7 +902,7 @@ async function openDrill(category,amount,percentage){
       :txns.map(t=>`
     <div id="txn-row-${t.id}" style="border-bottom:1px solid var(--line);padding:.55rem 0">
       <div id="txn-view-${t.id}" style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
-        <div><div style="font-size:.88rem;font-weight:500">${esc(t.merchant||t.description||'')}</div><div style="font-size:.75rem;color:var(--muted)">${esc(t.date||'')} · ${esc(t.user||'')} · ${esc(normalizeCategory(t.category||''))}</div></div>
+        <div><div style="font-size:.88rem;font-weight:500">${esc(t.merchant||t.description||'')}</div><div style="font-size:.75rem;color:var(--muted)">${esc(t.date||'')} · ${esc(t.user||'')} · ${esc(t.category||'')}</div></div>
         <div style="display:flex;align-items:center;gap:.5rem"><strong class="num">${fmt(t.amount||0)}</strong>
         <button class="btn btn-secondary" style="font-size:.75rem;padding:.25rem .55rem" onclick="openTxnEdit('${esc(t.id)}','${esc(t.date||'')}','${esc(t.merchant||t.description||'')}',${t.amount||0},'${esc(t.category||'')}','${esc(t.user||'')}')">עריכה</button></div>
       </div>
