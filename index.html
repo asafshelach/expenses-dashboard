@@ -625,23 +625,45 @@ const SUMMARY_API      = 'https://asafshe.wixsite.com/expenses-bot/_functions/ge
 const IMPORT_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/importExpenses';
 const TRANSACTIONS_API = 'https://asafshe.wixsite.com/expenses-bot/_functions/getTransactions';
 const UPDATE_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/updateTransaction';
+
+// ─── Category normalization — single source of truth ─────────────────────────
+const CATEGORY_MAP = {
+  'מסעדות קפה וברים':   'מסעדות, קפה וברים',
+  'פנאי, בידור וספורט': 'פנאי',
+  'פנאי בידור וספורט':  'פנאי',
+  'חשמל ומחשבים':       'ציוד, תקשורת ומחשבים',
+};
+function normalizeCategory(cat) {
+  if (!cat) return 'ללא קטגוריה';
+  const t = cat.trim();
+  return CATEGORY_MAP[t] || t;
+}
+
+// ─── Aggregate raw items into summary shape ───────────────────────────────────
+function aggregateItems(items) {
+  let total = 0;
+  const catMap = {}, userMap = {};
+  for (const t of items) {
+    const amt = Number(t.amount || 0);
+    const cat = normalizeCategory(t.category);
+    const usr = t.user || 'unknown';
+    total += amt;
+    catMap[cat] = (catMap[cat] || 0) + amt;
+    userMap[usr] = (userMap[usr] || 0) + amt;
+  }
+  total = Math.round(total * 100) / 100;
+  const byCategory = Object.entries(catMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, amount]) => ({ category, amount: Math.round(amount * 100) / 100 }));
+  const byUser = {};
+  for (const [u, a] of Object.entries(userMap)) byUser[u] = Math.round(a * 100) / 100;
+  return { total, count: items.length, byCategory, byUser };
+}
+
 const KNOWN_CATEGORIES = ['מזון','מסעדות','תחבורה','קניות','בריאות','בידור','חשבונות','ביגוד','טיפוח','חינוך','נסיעות','אחר','ללא קטגוריה'];
 const KNOWN_USERS  = ['asaf', 'karina', 'joint'];
 const USER_LABELS  = { asaf: 'אסף', karina: 'קרינה', joint: 'משותף' };
 const USER_COLORS  = { asaf: '#0f6e6a', karina: '#c45c48', joint: '#8b6f47' };
-
-function validateSummaryData(data, month) {
-  if (!data) { console.error('[VALIDATE] No data for', month); return; }
-  const cats = data.byCategory || {};
-  if (Object.keys(cats).length > 0 && (!data.total || Number(data.total) === 0)) {
-    console.error('[VALIDATE] byCategory has entries but total=0 for month', month, 'data:', JSON.stringify(data).slice(0,200));
-  }
-  const byUser = data.byUser || {};
-  const unknown = Object.keys(byUser).filter(u => !KNOWN_USERS.includes(u) && byUser[u] > 0);
-  if (unknown.length > 0) {
-    console.warn('[VALIDATE] Unknown users filtered out:', unknown);
-  }
-}
 
 let currentMonth = todayMonth();
 let cachedData   = {};
@@ -697,14 +719,39 @@ function switchTab(tab) {
   if(tab==='trends'&&!trendData) loadTrendData();
 }
 
+// ─── Load & process data ──────────────────────────────────────────────────────
 async function loadData(month) {
   if(cachedData[month]){renderAll(cachedData[month],month);return;}
   showLoading();hideError();
   try {
     const r=await fetch(`${SUMMARY_API}?month=${month}`);
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d=await r.json();
-    validateSummaryData(d, month);
+    const raw=await r.json();
+    if(raw.error) throw new Error(raw.error);
+
+    // Aggregate raw items in the frontend — normalization happens here
+    const items = raw.items || [];
+    const agg = aggregateItems(items);
+
+    const prevItems = raw.prevMonth?.items || [];
+    const prevAgg = aggregateItems(prevItems);
+
+    const d = {
+      month,
+      goals: raw.goals || { expenseTarget: 17000, savingsTarget: 14325 },
+      total: agg.total,
+      count: agg.count,
+      byCategory: agg.byCategory,
+      byUser: agg.byUser,
+      // raw items kept for drill-down filtering
+      _items: items,
+      prevMonth: {
+        month: raw.prevMonth?.month,
+        total: prevAgg.total,
+        byCategory: prevAgg.byCategory,
+        _items: prevItems,
+      },
+    };
     cachedData[month]=d; renderAll(d,month);
   } catch(e){showError('שגיאה בטעינת נתונים: '+e.message);hideLoading();}
 }
@@ -727,7 +774,7 @@ function renderAll(data,month){
 
 function renderSummary(data,month){
   const total=Number(data.total||0),count=Number(data.count||0);
-  const goals=data.goals||{},target=Number(goals.expenseTarget||data.monthlyGoal||17000);
+  const goals=data.goals||{},target=Number(goals.expenseTarget||17000);
   const prevD=data.prevMonth||{},prevTot=Number(prevD.total||0);
   const byUser=data.byUser||{},insights=data.insights||null;
   document.getElementById('c-total').textContent=fmt(total);
@@ -755,11 +802,8 @@ function renderSummary(data,month){
   document.getElementById('budget-pct-label').textContent=bigPct+'%';
   document.getElementById('budget-spent-lbl').textContent=fmt(total);
   document.getElementById('budget-target-lbl').textContent=fmt(target);
-  const rawByUser=typeof byUser==='object'&&!Array.isArray(byUser)
-    ?Object.entries(byUser).map(([user,amount])=>({user,amount:Number(amount)}))
-    :(Array.isArray(byUser)?byUser:[]);
-  const byArr=KNOWN_USERS.filter(u=>rawByUser.some(r=>r.user===u&&r.amount>0))
-    .map(u=>{const r=rawByUser.find(x=>x.user===u);return{user:u,amount:r?r.amount:0};});
+  // byUser is now a plain object { asaf: N, karina: N, joint: N }
+  const byArr=KNOWN_USERS.filter(u=>byUser[u]>0).map(u=>({user:u,amount:Number(byUser[u]||0)}));
   const userTot=byArr.reduce((s,u)=>s+u.amount,0)||total;
   document.getElementById('users-bars').innerHTML=byArr.map(u=>{
     const p2=pct(u.amount,userTot),lbl=USER_LABELS[u.user]||u.user;
@@ -783,7 +827,7 @@ function renderSummary(data,month){
   if(!cats.length){te.style.display='block';tt.style.display='none';return;}
   te.style.display='none';tt.style.display='';
   tb.innerHTML=cats.slice(0,5).map(c=>{
-    const am=Number(c.amount||c.total||0),p2=pct(am,total);
+    const am=Number(c.amount||0),p2=pct(am,total);
     return `<tr><td>${esc(c.category)}</td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr">${p2}%</td></tr>`;
   }).join('');
 }
@@ -795,11 +839,11 @@ function renderCategories(data){
   if(!cats.length){ce.style.display='block';ct.style.display='none';return;}
   ce.style.display='none';ct.style.display='';
   cb.innerHTML=cats.map(c=>{
-    const am=Number(c.amount||c.total||0),p2=pct(am,total);
+    const am=Number(c.amount||0),p2=pct(am,total);
     return `<tr class="clickable" onclick="openDrill('${esc(c.category)}',${am},${p2})"><td>${esc(c.category)}</td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr">${p2}%</td><td><div class="ibar"><div class="ibar-fill" style="width:${Math.min(p2,100)}%"></div></div></td></tr>`;
   }).join('');
   const COLS=['#0f6e6a','#c45c48','#49a6a1','#e8a87c','#7EB5A6','#d4956a','#5b8fa8','#b8860b'];
-  const top8=cats.slice(0,8),lbls=top8.map(c=>c.category),amts=top8.map(c=>Number(c.amount||c.total||0)),colors=top8.map((_,i)=>COLS[i%COLS.length]);
+  const top8=cats.slice(0,8),lbls=top8.map(c=>c.category),amts=top8.map(c=>Number(c.amount||0)),colors=top8.map((_,i)=>COLS[i%COLS.length]);
   if(chartCatPie) chartCatPie.destroy();
   chartCatPie=new Chart(document.getElementById('chart-cat-pie').getContext('2d'),{type:'doughnut',data:{labels:lbls,datasets:[{data:amts,backgroundColor:colors,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Rubik',size:10}}}}}});
   if(chartCatBars) chartCatBars.destroy();
@@ -817,7 +861,7 @@ function updateTxnTable(cats,total,search,userFilter){
   if(!filtered.length){te.style.display='block';tt.style.display='none';return;}
   te.style.display='none';tt.style.display='';
   tb.innerHTML=filtered.map(c=>{
-    const am=Number(c.amount||c.total||0),p2=pct(am,total);
+    const am=Number(c.amount||0),p2=pct(am,total);
     return `<tr class="clickable" onclick="openDrill('${esc(c.category)}',${am},${p2})"><td colspan="2">${esc(c.category)}</td><td colspan="2"><div class="ibar"><div class="ibar-fill" style="width:${Math.min(p2,100)}%"></div></div></td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted);font-size:.8rem">${p2}%</td></tr>`;
   }).join('');
 }
@@ -833,7 +877,14 @@ async function loadTrendData(){
     try{
       const r=await fetch(`${SUMMARY_API}?month=${m}`);
       if(!r.ok) return{month:m,data:null};
-      const d=await r.json();cachedData[m]=d;return{month:m,data:d};
+      const raw=await r.json();
+      if(raw.error) return{month:m,data:null};
+      const items=raw.items||[];
+      const agg=aggregateItems(items);
+      const prevItems=raw.prevMonth?.items||[];
+      const prevAgg=aggregateItems(prevItems);
+      const d={month:m,goals:raw.goals||{expenseTarget:17000},total:agg.total,count:agg.count,byCategory:agg.byCategory,byUser:agg.byUser,_items:items,prevMonth:{month:raw.prevMonth?.month,total:prevAgg.total,byCategory:prevAgg.byCategory,_items:prevItems}};
+      cachedData[m]=d;return{month:m,data:d};
     }catch(e){return{month:m,data:null};}
   }));
   trendData=results;renderTrend(results);
@@ -842,8 +893,8 @@ async function loadTrendData(){
 function renderTrend(results){
   if(!results||!results.length) return;
   const labels=results.map(r=>monthLabel(r.month).split(' ')[0]);
-  const totals=results.map(r=>r.data?Number(r.data.total||r.data.data?.total||0):0);
-  const targets=results.map(r=>r.data?Number((r.data.goals||{}).expenseTarget||(r.data.monthlyGoal||17000)):17000);
+  const totals=results.map(r=>r.data?Number(r.data.total||0):0);
+  const targets=results.map(r=>r.data?Number((r.data.goals||{}).expenseTarget||17000):17000);
   if(chartTrend) chartTrend.destroy();
   chartTrend=new Chart(document.getElementById('chart-trend').getContext('2d'),{
     type:'line',
@@ -855,7 +906,7 @@ function renderTrend(results){
   });
   const allCats=[...new Set(results.flatMap(r=>(r.data?.byCategory||[]).map(c=>c.category)))].slice(0,6);
   const COLS=['#0f6e6a','#c45c48','#49a6a1','#e8a87c','#7EB5A6','#d4956a'];
-  const catDS=allCats.map((cat,i)=>({label:cat,data:results.map(r=>{const c=(r.data?.byCategory||[]).find(x=>x.category===cat);return c?Number(c.amount||c.total||0):0;}),borderColor:COLS[i%COLS.length],backgroundColor:COLS[i%COLS.length]+'28',fill:false,tension:.3,pointRadius:3}));
+  const catDS=allCats.map((cat,i)=>({label:cat,data:results.map(r=>{const c=(r.data?.byCategory||[]).find(x=>x.category===cat);return c?Number(c.amount||0):0;}),borderColor:COLS[i%COLS.length],backgroundColor:COLS[i%COLS.length]+'28',fill:false,tension:.3,pointRadius:3}));
   if(chartCatTrend) chartCatTrend.destroy();
   chartCatTrend=new Chart(document.getElementById('chart-cat-trend').getContext('2d'),{type:'line',data:{labels,datasets:catDS},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Rubik',size:10}}}},scales:{x:{grid:{color:'#ede9e0'},ticks:{font:{family:'Rubik',size:10}}},y:{grid:{color:'#ede9e0'},ticks:{font:{family:'Rubik',size:10},callback:v=>'₪'+fmtPlain(v)}}}}});
   const nz=results.filter(r=>r.data&&Number(r.data.total||0)>0);
@@ -869,7 +920,7 @@ async function openDrill(category,amount,percentage){
   const data=cachedData[currentMonth]||{};
   document.getElementById('drill-title').textContent=category;
   const prev=(data.prevMonth?.byCategory||[]).find(c=>c.category===category);
-  const prevAm=prev?Number(prev.amount||prev.total||0):0;
+  const prevAm=prev?Number(prev.amount||0):0;
   let cmpHtml='';
   if(prevAm>0){
     const diff=amount-prevAm,dp=Math.round((diff/prevAm)*100);
@@ -893,7 +944,7 @@ async function openDrill(category,amount,percentage){
       :txns.map(t=>`
     <div id="txn-row-${t.id}" style="border-bottom:1px solid var(--line);padding:.55rem 0">
       <div id="txn-view-${t.id}" style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
-        <div><div style="font-size:.88rem;font-weight:500">${esc(t.merchant||t.description||'')}</div><div style="font-size:.75rem;color:var(--muted)">${esc(t.date||'')} · ${esc(t.user||'')} · ${esc(t.category||'')}</div></div>
+        <div><div style="font-size:.88rem;font-weight:500">${esc(t.merchant||t.description||'')}</div><div style="font-size:.75rem;color:var(--muted)">${esc(t.date||'')} · ${esc(t.user||'')} · ${esc(normalizeCategory(t.category||''))}</div></div>
         <div style="display:flex;align-items:center;gap:.5rem"><strong class="num">${fmt(t.amount||0)}</strong>
         <button class="btn btn-secondary" style="font-size:.75rem;padding:.25rem .55rem" onclick="openTxnEdit('${esc(t.id)}','${esc(t.date||'')}','${esc(t.merchant||t.description||'')}',${t.amount||0},'${esc(t.category||'')}','${esc(t.user||'')}')">עריכה</button></div>
       </div>
@@ -938,6 +989,7 @@ async function saveTxnEdit(id){
     st.textContent='✓ נשמר';
     cancelTxnEdit(id);
     delete cachedData[currentMonth];
+    loadData(currentMonth);
   }catch(e){st.textContent='שגיאה: '+e.message;}
 }
 
@@ -973,7 +1025,7 @@ async function doImport(){
     const d=await r.json();
     if(!r.ok||d.error) throw new Error(d.error||`שגיאה ${r.status}`);
     st.className='import-status ok';st.textContent='הייבוא הושלם בהצלחה';
-    document.getElementById('import-result').textContent=d.message||`יובאו ${d.imported||0} עסקאות, ${d.skipped||0} כפילויות דולגו`;
+    document.getElementById('import-result').textContent=d.message||`יובאו ${d.newCount||0} עסקאות, ${d.skipped||0} כפילויות דולגו`;
     importFileData=null;document.getElementById('drop-filename').style.display='none';
     delete cachedData[currentMonth];loadData(currentMonth);
   }catch(e){st.className='import-status err';st.textContent='שגיאה: '+e.message;btn.disabled=false;}
