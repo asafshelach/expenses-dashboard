@@ -409,8 +409,15 @@ section { margin-bottom: 1.25rem; }
         </div>
       </section>
       <section id="insights-section" style="display:none">
-        <div class="section-head"><h2>תובנות</h2></div>
-        <div class="insights-card"><h3 id="insights-title"></h3><ul id="insights-list"></ul></div>
+        <div class="section-head"><h2>תובנות והמלצות</h2><span class="aside" id="insights-meta"></span></div>
+        <div class="insights-card" id="insights-card">
+          <div id="insights-loading" style="display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.88rem;padding:.2rem 0 .6rem">
+            <div class="spinner" style="width:18px;height:18px;border-width:2px"></div><span>טוען תובנות...</span>
+          </div>
+          <div id="insights-empty" style="display:none;color:var(--muted);font-size:.88rem;padding:.2rem 0 .4rem">אין תובנות לחודש זה עדיין.</div>
+          <h3 id="insights-title" style="display:none"></h3>
+          <ul id="insights-list" style="display:none"></ul>
+        </div>
       </section>
       <section>
         <div class="section-head"><h2>ניצול תקציב</h2></div>
@@ -625,6 +632,7 @@ const SUMMARY_API      = 'https://asafshe.wixsite.com/expenses-bot/_functions/ge
 const IMPORT_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/importExpenses';
 const TRANSACTIONS_API = 'https://asafshe.wixsite.com/expenses-bot/_functions/getTransactions';
 const UPDATE_API       = 'https://asafshe.wixsite.com/expenses-bot/_functions/updateTransaction';
+const INSIGHTS_API     = 'https://asafshe.wixsite.com/expenses-bot/_functions/getInsights';
 
 // ─── All normalization & aggregation live in the backend (getSummary) ───────────
 // The dashboard is display-only: it consumes data.total, data.byUser,
@@ -730,6 +738,7 @@ function renderAll(data,month){
   renderSummary(data,month);renderCategories(data);renderTransactions(data);
   if(activeTab==='trends') renderTrend(trendData||[]);
   currentMonthTotal = Number(data.total || 0);
+  loadInsights(month);
   loadIncome(month);
   loadWealth(month);
 }
@@ -778,12 +787,7 @@ function renderSummary(data,month){
     data:{labels:byArr.map(u=>USER_LABELS[u.user]||u.user),datasets:[{data:byArr.map(u=>u.amount),backgroundColor:byArr.map(u=>USER_COLORS[u.user]||'#aaa'),borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Rubik',size:11}}}}}
   });
-  const ins=document.getElementById('insights-section');
-  if(insights&&(insights.title||insights.items?.length)){
-    ins.style.display='block';
-    document.getElementById('insights-title').textContent=insights.title||'';
-    document.getElementById('insights-list').innerHTML=(insights.items||[]).map(i=>`<li>${esc(i)}</li>`).join('');
-  } else {ins.style.display='none';}
+  // Insights loaded separately via loadInsights(month)
   const cats=data.byCategory||[];
   const te=document.getElementById('top-cats-empty'),tt=document.getElementById('top-cats-table'),tb=document.getElementById('top-cats-body');
   if(!cats.length){te.style.display='block';tt.style.display='none';return;}
@@ -1015,6 +1019,33 @@ const INCOME_API='https://asafshe.wixsite.com/expenses-bot/_functions/getIncome'
 const ADD_INCOME_API='https://asafshe.wixsite.com/expenses-bot/_functions/addIncome';
 const DELETE_INCOME_API='https://asafshe.wixsite.com/expenses-bot/_functions/deleteIncome';
 let currentMonthTotal=0;
+async function loadInsights(month){
+  const sec=document.getElementById('insights-section');
+  const loading=document.getElementById('insights-loading');
+  const empty=document.getElementById('insights-empty');
+  const title=document.getElementById('insights-title');
+  const list=document.getElementById('insights-list');
+  const meta=document.getElementById('insights-meta');
+  sec.style.display='block';
+  loading.style.display='flex';
+  empty.style.display='none';
+  title.style.display='none';
+  list.style.display='none';
+  meta.textContent='';
+  try{
+    const r=await fetch(`${INSIGHTS_API}?month=${month}`);
+    const d=await r.json();
+    loading.style.display='none';
+    const bullets=d.bullets||[];
+    if(!d.headline&&!bullets.length){empty.style.display='';sec.style.display='none';return;}
+    if(d.headline){title.textContent=d.headline;title.style.display='';}
+    if(bullets.length){list.innerHTML=bullets.map(b=>`<li>${esc(b)}</li>`).join('');list.style.display='';}
+    if(d.generatedAt){
+      const at=new Date(d.generatedAt);
+      meta.textContent='עודכן '+at.toLocaleDateString('he-IL',{day:'numeric',month:'short'})+(d.source==='llm'?' · AI':'');
+    }
+  }catch(e){loading.style.display='none';sec.style.display='none';console.error('[INSIGHTS]',e);}
+}
 async function loadIncome(month){try{const r=await fetch(`${INCOME_API}?month=${month}`);const d=await r.json();if(d.error){console.error('[INCOME]',d.error);return;}renderIncome(d);}catch(e){console.error('[INCOME]',e);}}
 function renderIncome(data){
   const total=Number(data.total||0),expenses=currentMonthTotal,balance=total-expenses;
