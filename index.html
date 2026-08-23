@@ -465,6 +465,14 @@ section { margin-bottom: 1.25rem; }
 
   <!-- TAB: CATEGORIES -->
   <div class="tab-panel" id="tab-categories">
+    <div class="filter-row" style="margin-bottom:.5rem">
+      <span style="font-size:.82rem;color:var(--muted);white-space:nowrap">משתמש:</span>
+      <select id="cat-user-filter" style="flex:0 1 auto;font-size:.84rem">
+        <option value="">הכל</option>
+        <option value="asaf">אסף</option>
+        <option value="karina">קרינה</option>
+      </select>
+    </div>
     <section>
       <div class="section-head"><h2>הוצאות לפי קטגוריה</h2><span class="aside" id="cat-total-aside">--</span></div>
       <div class="grid grid-2 stack-mobile">
@@ -757,6 +765,7 @@ function switchTab(tab) {
   activeTab=tab;
   if(tab==='trends'&&!trendData) loadTrendData();
   if(tab==='buggy') loadBuggyTab();
+  if(tab==='categories') loadCategoryData();
   if(tab==='transactions') {
     const user=document.getElementById('txn-user-filter').value;
     loadAllTransactions(currentMonth, user);
@@ -801,7 +810,7 @@ function renderAll(data,month){
   hideLoading();hideError();
   document.getElementById('hdr-sub').textContent=monthLabel(month);
   document.getElementById('cashflow-title').textContent='תזרים — '+monthLabel(month);
-  renderSummary(data,month);renderCategories(data);renderTransactions(data);
+  renderSummary(data,month);if(activeTab==='categories'){loadCategoryData();}else{renderCategories(data,'');}renderTransactions(data);
   if(activeTab==='trends') renderTrend(trendData||[]);
   currentMonthTotal = Number(data.total || 0);
   loadInsights(month);
@@ -864,9 +873,10 @@ function renderSummary(data,month){
   }).join('');
 }
 
-function renderCategories(data){
+function renderCategories(data,userFilter){
   const cats=data.byCategory||[],total=Number(data.total||0);
-  document.getElementById('cat-total-aside').textContent=fmt(total);
+  const userLabel=userFilter==='asaf'?' · אסף בלבד':userFilter==='karina'?' · קרינה בלבד':'';
+  document.getElementById('cat-total-aside').textContent=fmt(total)+userLabel;
   const ce=document.getElementById('cat-empty'),ct=document.getElementById('cat-full-table'),cb=document.getElementById('cat-full-body');
   if(!cats.length){ce.style.display='block';ct.style.display='none';return;}
   ce.style.display='none';ct.style.display='';
@@ -1083,6 +1093,21 @@ async function reloadDrillTxns(){
     const tr=await fetch(url);
     const td=await tr.json();
     const txns=(td.transactions||[]).sort((a,b)=>b.date.localeCompare(a.date));
+    // Recalculate header totals when a user filter is active
+    if(user){
+      const filteredTotal=txns.reduce((s,t)=>s+Number(t.amount||0),0);
+      const globalTotal=Number((cachedData[currentMonth]||{}).total||0);
+      const filteredPct=globalTotal>0?Math.round((filteredTotal/globalTotal)*100):0;
+      const drillBody=document.getElementById('drill-body');
+      if(drillBody){
+        const nums=drillBody.querySelectorAll('.num');
+        if(nums[0]) nums[0].textContent=fmt(filteredTotal);
+        const pctSpans=drillBody.querySelectorAll('.flex-between');
+        if(pctSpans[1]){const sp=pctSpans[1].querySelector('span:last-child');if(sp)sp.textContent=filteredPct+'%';}
+        const bar=drillBody.querySelector('.progress-fill');
+        if(bar) bar.style.width=Math.min(filteredPct,100)+'%';
+      }
+    }
     const catOpts=KNOWN_CATEGORIES.map(c=>`<option value="${esc(c)}" ${c===category?'selected':''}>${esc(c)}</option>`).join('');
     const txnRows=txns.length===0
       ?`<div class="empty"><div class="eicon">🧾</div><p>אין עסקאות</p></div>`
@@ -1311,7 +1336,23 @@ async function loadBuggyTab(){
     document.getElementById('buggy-empty').textContent='שגיאה: '+e.message;
   }
 }
+async function loadCategoryData(){
+  const user=(document.getElementById('cat-user-filter')||{}).value||'';
+  if(!user){
+    const d=cachedData[currentMonth];
+    if(d){renderCategories(d,'');return;}
+  }
+  try{
+    const r=await fetch(`${SUMMARY_API}?month=${currentMonth}${user?'&user='+encodeURIComponent(user):''}`);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    renderCategories(d,user);
+  }catch(e){console.warn('category filter load error',e);}
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
+const _catFilter=document.getElementById('cat-user-filter');
+if(_catFilter) _catFilter.addEventListener('change',()=>loadCategoryData());
 buildMonthSelector();
 loadData(currentMonth);
 </script>
