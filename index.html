@@ -507,10 +507,10 @@ section { margin-bottom: 1.25rem; }
   <!-- TAB: TRANSACTIONS -->
   <div class="tab-panel" id="tab-transactions">
     <section>
-      <div class="section-head"><h2>עסקאות</h2><span class="aside" id="txn-count-label">--</span></div>
+      <div class="section-head"><h2>עסקאות לפי קטגוריה</h2><span class="aside" id="txn-count-label">--</span></div>
       <div class="filter-row">
         <input type="search" id="txn-search" placeholder="חיפוש קטגוריה...">
-        <select id="txn-user-filter">
+        <select id="txn-user-filter" onchange="onUserFilterChange()">
           <option value="">כל המשתמשים</option>
           <option value="asaf">אסף</option>
           <option value="karina">קרינה</option>
@@ -519,8 +519,25 @@ section { margin-bottom: 1.25rem; }
       <div class="card">
         <div class="empty" id="txn-empty" style="display:none"><div class="eicon">🔍</div><p>אין תוצאות</p></div>
         <table class="data-table" id="txn-table" style="display:none">
-          <thead><tr><th>תאריך</th><th>בית עסק</th><th>קטגוריה</th><th>משתמש</th><th style="text-align:left;direction:ltr">סכום</th><th></th></tr></thead>
+          <thead><tr><th>קטגוריה</th><th style="text-align:left;direction:ltr">סכום</th><th style="text-align:left;direction:ltr">%</th></tr></thead>
           <tbody id="txn-body"></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>כל העסקאות</h2><span class="aside" id="all-txn-count-label">--</span></div>
+      <div class="filter-row">
+        <input type="search" id="all-txn-search" placeholder="חיפוש לפי שם עסק...">
+      </div>
+      <div class="card">
+        <div id="all-txn-loading" style="text-align:center;padding:1.5rem 1rem;display:none">
+          <div class="spinner" style="margin:0 auto .5rem"></div>
+          <div style="font-size:.88rem;color:var(--muted)">טוען עסקאות...</div>
+        </div>
+        <div class="empty" id="all-txn-empty" style="display:none"><div class="eicon">🔍</div><p>אין עסקאות</p></div>
+        <table class="data-table" id="all-txn-table" style="display:none">
+          <thead><tr><th>תאריך</th><th>בית עסק</th><th>קטגוריה</th><th>משתמש</th><th style="text-align:left;direction:ltr">סכום</th></tr></thead>
+          <tbody id="all-txn-body"></tbody>
         </table>
       </div>
     </section>
@@ -740,6 +757,10 @@ function switchTab(tab) {
   activeTab=tab;
   if(tab==='trends'&&!trendData) loadTrendData();
   if(tab==='buggy') loadBuggyTab();
+  if(tab==='transactions') {
+    const user=document.getElementById('txn-user-filter').value;
+    loadAllTransactions(currentMonth, user);
+  }
 }
 
 // ─── Load & process data ──────────────────────────────────────────────────────
@@ -863,22 +884,126 @@ function renderCategories(data){
 
 function renderTransactions(data){
   const cats=data.byCategory||[],total=Number(data.total||0);
-  updateTxnTable(cats,total,'','');
+  document.getElementById('txn-count-label').textContent=fmt(total);
+  // Reset user filter on month change
+  document.getElementById('txn-user-filter').value='';
+  document.getElementById('txn-search').value='';
+  document.getElementById('all-txn-search').value='';
+  // Clear all-txns cache for this month (fresh data)
+  Object.keys(allTxnsCache).forEach(k=>{ if(k.startsWith(currentMonth+'|')) delete allTxnsCache[k]; });
+  updateTxnTable(cats,total,'');
+  loadAllTransactions(currentMonth, '');
 }
 
-function updateTxnTable(cats,total,search,userFilter){
+// Category-level table (top section of transactions tab)
+// userFilter here filters by re-fetching user-specific summary data
+function updateTxnTable(cats,total,search){
   const te=document.getElementById('txn-empty'),tt=document.getElementById('txn-table'),tb=document.getElementById('txn-body');
-  const filtered=search?cats.filter(c=>c.category.includes(search)):cats;
+  const filtered=search?cats.filter(c=>c.category.toLowerCase().includes(search.toLowerCase())):cats;
   if(!filtered.length){te.style.display='block';tt.style.display='none';return;}
   te.style.display='none';tt.style.display='';
   tb.innerHTML=filtered.map(c=>{
     const am=Number(c.amount||0),p2=pct(am,total);
-    return `<tr class="clickable" onclick="openDrill('${esc(c.category)}',${am},${p2})"><td colspan="2">${esc(c.category)}</td><td colspan="2"><div class="ibar"><div class="ibar-fill" style="width:${Math.min(p2,100)}%"></div></div></td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted);font-size:.8rem">${p2}%</td></tr>`;
+    return `<tr class="clickable" onclick="openDrill('${esc(c.category)}',${am},${p2})"><td>${esc(c.category)}</td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td><td style="text-align:left;direction:ltr;color:var(--muted);font-size:.8rem">${p2}%</td></tr>`;
   }).join('');
 }
 
-document.getElementById('txn-search').addEventListener('input',function(){const d=cachedData[currentMonth];if(!d)return;updateTxnTable(d.byCategory||[],Number(d.total||0),this.value.trim(),document.getElementById('txn-user-filter').value);});
-document.getElementById('txn-user-filter').addEventListener('change',function(){const d=cachedData[currentMonth];if(!d)return;updateTxnTable(d.byCategory||[],Number(d.total||0),document.getElementById('txn-search').value.trim(),this.value);});
+// Full transaction list — all individual transactions for the month
+let allTxnsCache = {}; // key: "YYYY-MM|user"
+
+async function loadAllTransactions(month, user) {
+  const cacheKey = month + '|' + (user||'');
+  const loadEl = document.getElementById('all-txn-loading');
+  const emptyEl = document.getElementById('all-txn-empty');
+  const tableEl = document.getElementById('all-txn-table');
+  const bodyEl  = document.getElementById('all-txn-body');
+  const countEl = document.getElementById('all-txn-count-label');
+  if(!loadEl) return; // tab not rendered yet
+
+  if(allTxnsCache[cacheKey]) {
+    renderAllTxns(allTxnsCache[cacheKey], document.getElementById('all-txn-search').value.trim());
+    return;
+  }
+  loadEl.style.display='block'; emptyEl.style.display='none'; tableEl.style.display='none';
+  try {
+    let url = `${TRANSACTIONS_API}?month=${encodeURIComponent(month)}`;
+    if(user) url += `&user=${encodeURIComponent(user)}`;
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const txns = (d.transactions||[]).sort((a,b)=>b.date.localeCompare(a.date));
+    allTxnsCache[cacheKey] = txns;
+    loadEl.style.display='none';
+    renderAllTxns(txns, document.getElementById('all-txn-search').value.trim());
+  } catch(e) {
+    loadEl.style.display='none';
+    emptyEl.style.display='block';
+    emptyEl.querySelector('p').textContent='שגיאה בטעינת עסקאות: '+e.message;
+  }
+}
+
+function renderAllTxns(txns, search) {
+  const emptyEl = document.getElementById('all-txn-empty');
+  const tableEl = document.getElementById('all-txn-table');
+  const bodyEl  = document.getElementById('all-txn-body');
+  const countEl = document.getElementById('all-txn-count-label');
+  const filtered = search
+    ? txns.filter(t=>(t.merchant||t.description||'').toLowerCase().includes(search.toLowerCase()))
+    : txns;
+  countEl.textContent = filtered.length + ' עסקאות';
+  if(!filtered.length){ emptyEl.style.display='block'; tableEl.style.display='none'; return; }
+  emptyEl.style.display='none'; tableEl.style.display='';
+  const userLabel = u => USER_LABELS[u]||u||'--';
+  bodyEl.innerHTML = filtered.map(t=>{
+    const am=Number(t.amount||0);
+    return `<tr><td class="ltr">${esc(t.date||'')}</td><td>${esc(t.merchant||t.description||'')}</td><td>${esc(t.category||'')}</td><td>${esc(userLabel(t.user))}</td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td></tr>`;
+  }).join('');
+}
+
+// Called when user filter dropdown changes — refreshes both tables
+async function onUserFilterChange() {
+  const user = document.getElementById('txn-user-filter').value;
+  const search = document.getElementById('txn-search').value.trim();
+  if(user) {
+    // Re-fetch summary filtered by user to update category totals
+    try {
+      let url = `${SUMMARY_API}?month=${encodeURIComponent(currentMonth)}&user=${encodeURIComponent(user)}`;
+      const r = await fetch(url);
+      if(r.ok) {
+        const raw = await r.json();
+        if(!raw.error) {
+          const cats = raw.byCategory || [];
+          const total = Number(raw.total||0);
+          document.getElementById('txn-count-label').textContent = fmt(total);
+          updateTxnTable(cats, total, search);
+        }
+      }
+    } catch(e) { /* fallback: filter locally from cached data */ 
+      const d = cachedData[currentMonth];
+      if(d) updateTxnTable(d.byCategory||[], Number(d.total||0), search);
+    }
+  } else {
+    const d = cachedData[currentMonth];
+    if(d) {
+      document.getElementById('txn-count-label').textContent = fmt(Number(d.total||0));
+      updateTxnTable(d.byCategory||[], Number(d.total||0), search);
+    }
+  }
+  // Clear the all-txns cache for this user combo so it re-fetches
+  const cacheKey = currentMonth + '|' + user;
+  delete allTxnsCache[cacheKey];
+  loadAllTransactions(currentMonth, user);
+}
+
+document.getElementById('txn-search').addEventListener('input', function(){
+  const d = cachedData[currentMonth]; if(!d) return;
+  updateTxnTable(d.byCategory||[], Number(d.total||0), this.value.trim());
+});
+document.getElementById('all-txn-search').addEventListener('input', function(){
+  const user = document.getElementById('txn-user-filter').value;
+  const cacheKey = currentMonth + '|' + (user||'');
+  if(allTxnsCache[cacheKey]) renderAllTxns(allTxnsCache[cacheKey], this.value.trim());
+});
 
 async function loadTrendData(){
   const months=[];
@@ -1192,3 +1317,4 @@ loadData(currentMonth);
 </script>
 </body>
 </html>
+
