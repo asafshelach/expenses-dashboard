@@ -1093,8 +1093,9 @@ async function reloadDrillTxns(){
     const tr=await fetch(url);
     const td=await tr.json();
     const txns=(td.transactions||[]).sort((a,b)=>b.date.localeCompare(a.date));
-    // Recalculate header totals when a user filter is active
-    if(user){
+    // Always recalculate header totals from actual fetched transactions
+    // (fixes: header not updating when switching back to "הכל", and mismatch on first open)
+    {
       const filteredTotal=txns.reduce((s,t)=>s+Number(t.amount||0),0);
       const globalTotal=Number((cachedData[currentMonth]||{}).total||0);
       const filteredPct=globalTotal>0?Math.round((filteredTotal/globalTotal)*100):0;
