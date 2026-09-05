@@ -544,7 +544,7 @@ section { margin-bottom: 1.25rem; }
         </div>
         <div class="empty" id="all-txn-empty" style="display:none"><div class="eicon">🔍</div><p>אין עסקאות</p></div>
         <table class="data-table" id="all-txn-table" style="display:none">
-          <thead><tr><th>תאריך</th><th>בית עסק</th><th>קטגוריה</th><th>משתמש</th><th style="text-align:left;direction:ltr">סכום</th></tr></thead>
+          <thead><tr><th>תאריך</th><th>בית עסק</th><th>קטגוריה</th><th>משתמש</th><th style="text-align:left;direction:ltr">סכום</th><th style="text-align:right">הזנה</th><th></th></tr></thead>
           <tbody id="all-txn-body"></tbody>
         </table>
       </div>
@@ -941,7 +941,11 @@ async function loadAllTransactions(month, user) {
     const r = await fetch(url);
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    const txns = (d.transactions||[]).sort((a,b)=>b.date.localeCompare(a.date));
+    const txns = (d.transactions||[]).sort((a,b)=>{
+      const dc=a.date.localeCompare(b.date); if(dc) return dc;
+      const ac=(Number(a.amount)||0)-(Number(b.amount)||0); if(ac) return ac;
+      return (a.merchant||'').localeCompare(b.merchant||'','he');
+    });
     allTxnsCache[cacheKey] = txns;
     loadEl.style.display='none';
     renderAllTxns(txns, document.getElementById('all-txn-search').value.trim());
@@ -964,10 +968,75 @@ function renderAllTxns(txns, search) {
   if(!filtered.length){ emptyEl.style.display='block'; tableEl.style.display='none'; return; }
   emptyEl.style.display='none'; tableEl.style.display='';
   const userLabel = u => USER_LABELS[u]||u||'--';
+  const ALL_CATS = ['אופנה','דיור','העברת כספים','חשבונות','טיפוח ויופי','מזון וצריכה','מסעדות, קפה וברים','נסיעות','פנאי','ציוד, תקשורת ומחשבים','קוסמטיקה וטיפוח','ריהוט ובית','שונות','תחבורה ורכבים','ללא קטגוריה'];
   bodyEl.innerHTML = filtered.map(t=>{
     const am=Number(t.amount||0);
-    return `<tr><td class="ltr">${esc(t.date||'')}</td><td>${esc(t.merchant||t.description||'')}</td><td>${esc(t.category||'')}</td><td>${esc(userLabel(t.user))}</td><td class="num" style="text-align:left;direction:ltr">${fmt(am)}</td></tr>`;
+    const importedDate = t.importedAt ? String(t.importedAt).substring(0,10) : '';
+    const catOpts = ALL_CATS.map(c=>`<option value="${esc(c)}" ${c===t.category?'selected':''}>${esc(c)}</option>`).join('');
+    const tid = esc(t.id||'');
+    return `<tr id="atxn-row-${tid}">
+      <td class="ltr">${esc(t.date||'')}</td>
+      <td id="atxn-merchant-${tid}">${esc(t.merchant||t.description||'')}</td>
+      <td id="atxn-cat-${tid}">${esc(t.category||'')}</td>
+      <td>${esc(userLabel(t.user))}</td>
+      <td class="num" style="text-align:left;direction:ltr" id="atxn-amt-${tid}">${fmt(am)}</td>
+      <td style="text-align:right;font-size:.72rem;color:var(--muted);direction:ltr">${esc(importedDate)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary" style="font-size:.73rem;padding:.2rem .5rem" onclick="openAtxnEdit('${tid}','${esc(t.date||'')}','${esc(t.merchant||t.description||'')}',${am},'${esc(t.category||'')}','${esc(t.user||'')}')">עריכה</button>
+      </td>
+    </tr>
+    <tr id="atxn-edit-row-${tid}" style="display:none">
+      <td colspan="7" style="padding:.5rem 0">
+        <div class="manual-form" style="gap:.5rem">
+          <div class="form-group"><label class="form-label">תאריך</label><input id="atf-date-${tid}" type="date" value="${esc(t.date||'')}" style="font-size:.82rem"></div>
+          <div class="form-group"><label class="form-label">בית עסק</label><input id="atf-merchant-${tid}" type="text" value="${esc(t.merchant||t.description||'')}" style="font-size:.82rem"></div>
+          <div class="form-group"><label class="form-label">סכום</label><input id="atf-amount-${tid}" type="number" step="0.01" value="${am}" style="font-size:.82rem"></div>
+          <div class="form-group"><label class="form-label">קטגוריה</label><select id="atf-cat-${tid}" style="font-size:.82rem">${catOpts}</select></div>
+          <div class="form-group"><label class="form-label">משתמש</label><select id="atf-user-${tid}" style="font-size:.82rem"><option value="asaf" ${t.user==='asaf'?'selected':''}>אסף</option><option value="karina" ${t.user==='karina'?'selected':''}>קרינה</option></select></div>
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
+          <button class="btn btn-primary" style="font-size:.8rem;padding:.3rem .7rem" onclick="saveAtxnEdit('${tid}')">שמור</button>
+          <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem" onclick="cancelAtxnEdit('${tid}')">ביטול</button>
+          <span id="atxn-status-${tid}" style="font-size:.78rem;color:var(--muted)"></span>
+        </div>
+      </td>
+    </tr>`;
   }).join('');
+}
+
+function openAtxnEdit(id) {
+  document.getElementById('atxn-row-'+id).style.display='none';
+  document.getElementById('atxn-edit-row-'+id).style.display='';
+}
+function cancelAtxnEdit(id) {
+  document.getElementById('atxn-row-'+id).style.display='';
+  document.getElementById('atxn-edit-row-'+id).style.display='none';
+  document.getElementById('atxn-status-'+id).textContent='';
+}
+async function saveAtxnEdit(id) {
+  const date=document.getElementById('atf-date-'+id).value;
+  const merchant=document.getElementById('atf-merchant-'+id).value.trim();
+  const amount=parseFloat(document.getElementById('atf-amount-'+id).value);
+  const category=document.getElementById('atf-cat-'+id).value;
+  const user=document.getElementById('atf-user-'+id).value;
+  const st=document.getElementById('atxn-status-'+id);
+  st.textContent='שומר...'; st.style.color='var(--muted)';
+  try {
+    const r=await fetch(`${UPDATE_API}?id=${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txnDate:date,merchant,amount,category,user})});
+    const d=await r.json();
+    if(!r.ok||d.error) throw new Error(d.error||`שגיאה ${r.status}`);
+    // Update displayed row in-place
+    const mEl=document.getElementById('atxn-merchant-'+id);
+    const cEl=document.getElementById('atxn-cat-'+id);
+    const aEl=document.getElementById('atxn-amt-'+id);
+    if(mEl) mEl.textContent=merchant;
+    if(cEl) cEl.textContent=category;
+    if(aEl) aEl.textContent=fmt(amount);
+    // Invalidate cache so next load gets fresh data
+    Object.keys(allTxnsCache).forEach(k=>{ if(k.startsWith(currentMonth+'|')) delete allTxnsCache[k]; });
+    st.textContent='✓ נשמר'; st.style.color='var(--good)';
+    setTimeout(()=>cancelAtxnEdit(id),800);
+  } catch(e) { st.textContent='שגיאה: '+e.message; st.style.color='var(--coral)'; }
 }
 
 // Called when user filter dropdown changes — refreshes both tables
